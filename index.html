@@ -3479,6 +3479,9 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     className: `tab ${tab === 'metas' ? 'active' : ''}`,
     onClick: () => setTab('metas')
   }, "\uD83C\uDFAF Metas"), /*#__PURE__*/React.createElement("button", {
+    className: `tab ${tab === 'painel' ? 'active' : ''}`,
+    onClick: () => setTab('painel')
+  }, "\uD83D\uDCCA\uFE0F Painel"), /*#__PURE__*/React.createElement("button", {
     className: "tab",
     onClick: () => setTab('horas'),
     style: tab === 'horas' ? {
@@ -3678,6 +3681,17 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     hoursDataByClient: hoursDataByClient,
     cltEnabled: cltEnabled,
     cltLiquido: cltLiquido
+  }), tab === 'painel' && /*#__PURE__*/React.createElement(TabPainel, {
+    globalCfg: globalCfg,
+    getMCfg: getMCfg,
+    monthlyFat: monthlyFat,
+    getExp: getExp,
+    getInv: getInv,
+    otherIncome: otherIncome,
+    clients: clients,
+    hoursDataByClient: hoursDataByClient,
+    cltEnabled: cltEnabled,
+    cltLiquido: cltLiquido
   }), tab === 'metas' && /*#__PURE__*/React.createElement(TabMetas, {
     cfg: cfg,
     expenses: expenses,
@@ -3706,6 +3720,116 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     className: "toast"
   }, toast));
 }
+// ── TabPainel: comparativo mensal ─────────────────────────────────────────
+function TabPainel({ globalCfg, getMCfg, monthlyFat, getExp, getInv, otherIncome, clients, hoursDataByClient, cltEnabled, cltLiquido }) {
+  const thisYear = new Date().getFullYear();
+  const [year, setYear] = React.useState(thisYear);
+  const [vis, setVis] = React.useState({ fat: true, liquido: true, gastos: true, impostos: true });
+  const chartRef = React.useRef(null);
+  const chartInst = React.useRef(null);
+
+  const months = React.useMemo(() => MONTHS.map((_, i) => {
+    const fatMes = monthlyFat[i] || 0;
+    const horasBruto = (clients || []).reduce((s, c) => {
+      const hd = (hoursDataByClient || {})[c.id] || {};
+      const { h } = getMonthTotals(hd, year, i);
+      return s + h * (c.valorHora || 0);
+    }, 0);
+    const c = computeMonth({ ...globalCfg, ...getMCfg(year, i) }, fatMes, getExp(year, i), getInv(year, i), otherIncome, horasBruto);
+    return {
+      fat: c.fat,
+      liquido: c.resFinal + (cltEnabled ? cltLiquido : 0),
+      gastos: c.totalGastos,
+      impostos: c.simples + c.inss,
+    };
+  }), [globalCfg, getMCfg, monthlyFat, getExp, getInv, otherIncome, clients, hoursDataByClient, year, cltEnabled, cltLiquido]);
+
+  React.useEffect(() => {
+    if (!chartRef.current) return;
+    if (chartInst.current) { chartInst.current.destroy(); chartInst.current = null; }
+    const datasets = [
+      vis.fat      && { label: 'Faturamento', data: months.map(m => m.fat),      backgroundColor: 'rgba(59,130,246,.75)',  borderColor: '#3b82f6', borderWidth: 1, borderRadius: 4 },
+      vis.liquido  && { label: 'Líquido',     data: months.map(m => m.liquido),  backgroundColor: 'rgba(16,185,129,.75)',  borderColor: '#10b981', borderWidth: 1, borderRadius: 4 },
+      vis.gastos   && { label: 'Despesas',    data: months.map(m => m.gastos),   backgroundColor: 'rgba(248,113,113,.75)', borderColor: '#f87171', borderWidth: 1, borderRadius: 4 },
+      vis.impostos && { label: 'Impostos',    data: months.map(m => m.impostos), backgroundColor: 'rgba(245,158,11,.75)',  borderColor: '#f59e0b', borderWidth: 1, borderRadius: 4 },
+    ].filter(Boolean);
+    chartInst.current = new Chart(chartRef.current, {
+      type: 'bar',
+      data: { labels: MONTHS, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `  ${ctx.dataset.label}: ${R(ctx.raw)}` } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(42,51,71,.6)' }, ticks: { color: '#64748b', font: { size: 11 } } },
+          y: { grid: { color: 'rgba(42,51,71,.6)' }, ticks: { color: '#64748b', font: { size: 11 }, callback: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v } }
+        }
+      }
+    });
+    return () => { if (chartInst.current) { chartInst.current.destroy(); chartInst.current = null; } };
+  }, [months, vis]);
+
+  const tot = k => months.reduce((s, m) => s + m[k], 0);
+  const cards = [
+    { key: 'fat',      label: 'Faturamento', color: '#3b82f6', bg: 'rgba(59,130,246,.08)',  border: 'rgba(59,130,246,.25)' },
+    { key: 'liquido',  label: 'Líquido',     color: '#10b981', bg: 'rgba(16,185,129,.08)',  border: 'rgba(16,185,129,.25)' },
+    { key: 'gastos',   label: 'Despesas',    color: '#f87171', bg: 'rgba(248,113,113,.08)', border: 'rgba(248,113,113,.25)' },
+    { key: 'impostos', label: 'Impostos',    color: '#f59e0b', bg: 'rgba(245,158,11,.08)',  border: 'rgba(245,158,11,.25)' },
+  ];
+
+  return React.createElement('div', { style: { padding: 16, maxWidth: 900, margin: '0 auto' } },
+    // Header: ano + toggles
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        React.createElement('button', { onClick: () => setYear(y => y - 1), style: { background: 'var(--s2)', border: '1px solid var(--border)', color: 'var(--txt)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 16 } }, '‹'),
+        React.createElement('span', { style: { fontWeight: 700, fontSize: 15 } }, year),
+        React.createElement('button', { onClick: () => setYear(y => y + 1), style: { background: 'var(--s2)', border: '1px solid var(--border)', color: 'var(--txt)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 16 } }, '›')
+      ),
+      React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+        cards.map(({ key, label, color, bg, border }) =>
+          React.createElement('button', {
+            key,
+            onClick: () => setVis(v => ({ ...v, [key]: !v[key] })),
+            style: {
+              display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontWeight: 600, border: `1px solid ${vis[key] ? border : 'var(--border)'}`,
+              background: vis[key] ? bg : 'transparent', color: vis[key] ? color : 'var(--muted)', transition: '.15s'
+            }
+          },
+            React.createElement('span', { style: { width: 10, height: 10, borderRadius: 2, background: vis[key] ? color : 'var(--border)', display: 'inline-block' } }),
+            label
+          )
+        )
+      )
+    ),
+    // Cards de totais anuais
+    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 16 } },
+      cards.map(({ key, label, color, bg, border }) =>
+        React.createElement('div', { key, style: { background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: '12px 14px' } },
+          React.createElement('div', { style: { fontSize: 11, color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 } }, label + ' anual'),
+          React.createElement('div', { style: { fontSize: 18, fontWeight: 800, color } }, R(tot(key)))
+        )
+      )
+    ),
+    // Gráfico
+    React.createElement('div', { className: 'card', style: { padding: 16 } },
+      React.createElement('div', { style: { height: 300, position: 'relative' } },
+        React.createElement('canvas', { ref: chartRef })
+      ),
+      // Legenda manual
+      React.createElement('div', { style: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' } },
+        cards.filter(c => vis[c.key]).map(({ key, label, color }) =>
+          React.createElement('div', { key, style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--muted)' } },
+            React.createElement('span', { style: { width: 12, height: 12, borderRadius: 2, background: color, display: 'inline-block' } }),
+            label
+          )
+        )
+      )
+    )
+  );
+}
+
 // ── Tela de login / cadastro ───────────────────────────────────────────────
 function AuthScreen() {
   const [mode, setMode] = React.useState('login');

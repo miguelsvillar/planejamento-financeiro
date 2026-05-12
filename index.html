@@ -838,7 +838,7 @@ function AlertBanners({
 
 // ── Monthly tab ───────────────────────────────────────────────────────────
 // ── TabHome: tela inicial com saúde financeira + insights ─────────────────
-function TabHome({ c, cltEnabled, cltLiquido, expMonth, expYear, getExp, getInv, globalCfg, getMCfg, otherIncome, monthlyFat, setTab }) {
+function TabHome({ c, cltEnabled, cltLiquido, expMonth, setExpMonth, expYear, setExpYear, getExp, getInv, globalCfg, getMCfg, otherIncome, monthlyFat, setTab }) {
   const liquidoFinal = c.resFinal + (cltEnabled ? cltLiquido : 0);
   const rendaDisp = Math.max(c.rendaDisp, 1);
 
@@ -937,10 +937,9 @@ function TabHome({ c, cltEnabled, cltLiquido, expMonth, expYear, getExp, getInv,
   return React.createElement('div', null,
 
     // ── Hero ──────────────────────────────────────────────────────────────
-    React.createElement('div', { style:{textAlign:'center',padding:'24px 16px 16px'} },
-      React.createElement('div', { style:{fontSize:11,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--muted)',marginBottom:8} },
-        `${MONTHS_FULL[expMonth]} ${expYear}`),
-      React.createElement('h2', { style:{fontSize:24,fontWeight:900,letterSpacing:'-.03em',lineHeight:1.2,marginBottom:6,color:'var(--txt)'} },
+    React.createElement('div', { style:{textAlign:'center',padding:'24px 16px 12px'} },
+      React.createElement(MonthNavBar, { expMonth, setExpMonth, expYear, setExpYear }),
+      React.createElement('h2', { style:{fontSize:24,fontWeight:900,letterSpacing:'-.03em',lineHeight:1.2,marginBottom:6,marginTop:12,color:'var(--txt)'} },
         'Pare de perder dinheiro', React.createElement('br',null), 'sem perceber.'),
       React.createElement('p', { style:{fontSize:13,color:'var(--muted)',fontWeight:500} },
         'Seu dinheiro explicado de forma simples.')
@@ -3841,7 +3840,9 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     cltEnabled: cltEnabled,
     cltLiquido: cltLiquido,
     expMonth: expMonth,
+    setExpMonth: setExpMonth,
     expYear: expYear,
+    setExpYear: setExpYear,
     getExp: getExp,
     getInv: getInv,
     globalCfg: globalCfg,
@@ -3932,8 +3933,191 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     totals: totals
   })), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast"
-  }, toast));
+  }, toast), /*#__PURE__*/React.createElement(FloatingChat, {
+    c: c,
+    cltEnabled: cltEnabled,
+    cltLiquido: cltLiquido,
+    expMonth: expMonth,
+    expYear: expYear,
+    expenses: expenses,
+    investments: investments
+  }));
 }
+// ── FloatingChat: assistente IA (Pollinations.ai — sem chave) ────────────
+function FloatingChat({ c, cltEnabled, cltLiquido, expMonth, expYear, expenses, investments }) {
+  const [open, setOpen]       = React.useState(false);
+  const [messages, setMessages] = React.useState([]);
+  const [input, setInput]     = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]     = React.useState('');
+  const bottomRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const liquidoFinal = c.resFinal + (cltEnabled ? cltLiquido : 0);
+  const totalGastos  = expenses.reduce((s, e) => s + n(e.value), 0);
+  const totalInv     = investments.reduce((s, i) => s + n(i.value), 0);
+
+  const buildCtx = () => {
+    const topExp = [...expenses].filter(e => n(e.value) > 0).sort((a,b) => n(b.value)-n(a.value)).slice(0,6);
+    const invPct = c.rendaDisp > 0 ? Math.round(totalInv / c.rendaDisp * 100) : 0;
+    const expPct = c.rendaDisp > 0 ? Math.round(totalGastos / c.rendaDisp * 100) : 0;
+    return `Você é um assistente financeiro pessoal objetivo e direto. Responda sempre em português brasileiro informal. Máximo 3 parágrafos curtos. Sem asteriscos nem markdown — texto corrido simples.
+
+DADOS FINANCEIROS — ${MONTHS_FULL[expMonth]} ${expYear}:
+• Faturamento PJ: ${R(c.fat)}${cltEnabled ? `\n• CLT líquido: ${R(cltLiquido)}` : ''}
+• Simples: ${R(c.simples)} | INSS: ${R(c.inss)} | Pró-labore: ${R(c.pl)}
+• Renda disponível: ${R(c.rendaDisp)}
+• Despesas: ${R(totalGastos)} (${expPct}% da renda)
+• Investimentos: ${R(totalInv)} (${invPct}% da renda)
+• Sobra final: ${R(liquidoFinal)}
+Principais despesas: ${topExp.map(e=>`${e.label} ${R(n(e.value))}`).join(' | ') || 'nenhuma cadastrada'}
+
+Se faltar dados, oriente o usuário a preencher a aba Mensal primeiro.`;
+  };
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { role: 'user', content: input.trim() };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setInput('');
+    setLoading(true);
+    setError('');
+    try {
+      // Pollinations.ai — IA gratuita, sem chave, open-source
+      const res = await fetch('https://text.pollinations.ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: next.map(m => ({ role: m.role, content: m.content })),
+          model: 'openai',
+          system: buildCtx(),
+          seed: Math.floor(Math.random() * 9999)
+        })
+      });
+      if (!res.ok) throw new Error(`Erro ${res.status}. Tente novamente.`);
+      const reply = await res.text();
+      if (!reply || reply.trim() === '') throw new Error('Resposta vazia. Tente novamente.');
+      setMessages(prev => [...prev, { role: 'assistant', content: reply.trim() }]);
+    } catch(e) {
+      setError(e.message || 'Sem conexão com a IA. Verifique sua internet.');
+    }
+    setLoading(false);
+  };
+
+  const suggestions = ['Onde posso economizar?', 'Estou investindo bem?', 'Como melhorar minha sobra?', 'Estou pagando muito imposto?'];
+
+  return React.createElement(React.Fragment, null,
+    // Botão flutuante
+    React.createElement('button', {
+      onClick: () => setOpen(o => !o),
+      title: 'Assistente financeiro',
+      style: {
+        position:'fixed', bottom:24, right:24, zIndex:500,
+        width:52, height:52, borderRadius:'50%',
+        background: open ? 'var(--s3)' : 'var(--pj)',
+        border: `2px solid ${open ? 'var(--border)' : 'rgba(59,130,246,.4)'}`,
+        color:'#fff', fontSize:22, cursor:'pointer',
+        boxShadow:'0 4px 24px rgba(0,0,0,.5)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        transition:'.2s', outline:'none'
+      }
+    }, open ? '✕' : '💬'),
+
+    // Painel do chat
+    open && React.createElement('div', {
+      style: {
+        position:'fixed', bottom:88, right:24, zIndex:499,
+        width:360, maxWidth:'calc(100vw - 32px)',
+        background:'var(--s1)', border:'1px solid var(--border)',
+        borderRadius:14, boxShadow:'0 8px 40px rgba(0,0,0,.6)',
+        display:'flex', flexDirection:'column', maxHeight:'72vh', overflow:'hidden'
+      }
+    },
+      // Header
+      React.createElement('div', { style:{padding:'13px 16px',borderBottom:'1px solid var(--border)',display:'flex',alignItems:'center',gap:10,flexShrink:0} },
+        React.createElement('div', { style:{fontSize:20} }, '✨'),
+        React.createElement('div', { style:{flex:1} },
+          React.createElement('div', { style:{fontWeight:700,fontSize:14} }, 'Assistente Financeiro'),
+          React.createElement('div', { style:{fontSize:11,color:'var(--muted)'} }, `IA gratuita · ${MONTHS_FULL[expMonth]} ${expYear}`)
+        ),
+        messages.length > 0 && React.createElement('button', {
+          onClick:()=>{ if(confirm('Limpar conversa?')) setMessages([]); },
+          title:'Limpar conversa',
+          style:{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:14,padding:'2px 6px'}
+        }, '🗑')
+      ),
+
+      // Mensagens
+      React.createElement('div', { style:{flex:1,overflowY:'auto',padding:'12px 14px',display:'flex',flexDirection:'column',gap:10} },
+        messages.length === 0 && React.createElement('div', { style:{textAlign:'center',color:'var(--muted)',padding:'12px 0'} },
+          React.createElement('div', { style:{fontSize:32,marginBottom:10} }, '💬'),
+          React.createElement('div', { style:{fontSize:13,marginBottom:16,lineHeight:1.6} }, 'Pergunte sobre suas finanças. Sem cadastro, sem chave.'),
+          React.createElement('div', { style:{display:'flex',flexDirection:'column',gap:6} },
+            suggestions.map(s =>
+              React.createElement('button', { key:s, onClick:()=>setInput(s),
+                style:{background:'var(--s2)',border:'1px solid var(--border)',borderRadius:8,padding:'7px 12px',color:'var(--muted)',fontSize:12,cursor:'pointer',textAlign:'left'}
+              }, s)
+            )
+          ),
+          React.createElement('div', { style:{fontSize:10,color:'var(--muted)',marginTop:16,lineHeight:1.5,opacity:.7} },
+            'Powered by Pollinations.ai (open-source). Suas perguntas passam pelo servidor deles.'
+          )
+        ),
+        messages.map((m, i) =>
+          React.createElement('div', { key:i, style:{display:'flex',justifyContent:m.role==='user'?'flex-end':'flex-start'} },
+            React.createElement('div', {
+              style:{
+                maxWidth:'88%', padding:'9px 13px',
+                borderRadius: m.role==='user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                background: m.role==='user' ? 'var(--pj)' : 'var(--s2)',
+                border: m.role==='user' ? 'none' : '1px solid var(--border)',
+                fontSize:13, lineHeight:1.6,
+                color: m.role==='user' ? '#fff' : 'var(--txt)',
+                whiteSpace:'pre-wrap', wordBreak:'break-word'
+              }
+            }, m.content)
+          )
+        ),
+        loading && React.createElement('div', { style:{display:'flex',justifyContent:'flex-start'} },
+          React.createElement('div', { style:{background:'var(--s2)',border:'1px solid var(--border)',borderRadius:'14px 14px 14px 4px',padding:'9px 14px',fontSize:13,color:'var(--muted)'} }, '✦ Pensando...')
+        ),
+        error && React.createElement('div', { style:{background:'var(--red2)',border:'1px solid var(--red)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'var(--red)',display:'flex',alignItems:'center',gap:6} },
+          '⚠ ', error,
+          React.createElement('button', { onClick:()=>setError(''), style:{background:'none',border:'none',color:'var(--red)',cursor:'pointer',marginLeft:'auto',fontSize:14} }, '×')
+        ),
+        React.createElement('div', { ref:bottomRef })
+      ),
+
+      // Input
+      React.createElement('div', { style:{padding:'10px 12px',borderTop:'1px solid var(--border)',display:'flex',gap:8,flexShrink:0} },
+        React.createElement('input', {
+          type:'text', value:input, disabled:loading,
+          onChange:e=>setInput(e.target.value),
+          onKeyDown:e=>{ if(e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); send(); } },
+          placeholder:'Pergunte algo sobre suas finanças...',
+          style:{flex:1,fontSize:13}
+        }),
+        React.createElement('button', {
+          onClick:send, disabled:loading||!input.trim(),
+          style:{
+            background:(!loading&&input.trim())?'var(--pj)':'var(--s3)',
+            color:'#fff', border:'none', borderRadius:8,
+            width:38, height:38, flexShrink:0,
+            cursor:loading||!input.trim()?'not-allowed':'pointer',
+            fontSize:17, fontWeight:700,
+            opacity:loading||!input.trim()?.5:1, transition:'.15s',
+            display:'flex',alignItems:'center',justifyContent:'center'
+          }
+        }, '↑')
+      )
+    )
+  );
+}
+
 // ── TabPainel: comparativo mensal ─────────────────────────────────────────
 function TabPainel({ globalCfg, getMCfg, monthlyFat, getExp, getInv, otherIncome, clients, hoursDataByClient, cltEnabled, cltLiquido }) {
   const thisYear = new Date().getFullYear();

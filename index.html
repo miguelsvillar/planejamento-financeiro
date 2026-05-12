@@ -588,8 +588,8 @@ function compute(cfg, revenues, expenses, investments, otherIncome, horasBruto =
   const lucroPJ = fat - simples - pl - cont;
   const dist = lucroPJ > 0 ? lucroPJ * distR : 0;
   const saldoPJ = lucroPJ - dist;
-  const prov13 = fat / 12;
-  const provFer = fat * (4 / 3) / 12;
+  const prov13 = cfg.prov13On !== false ? fat / 12 : 0;
+  const provFer = cfg.provFerOn !== false ? fat * (4 / 3) / 12 : 0;
   const totalProv = prov13 + provFer;
   const saldoDisp = saldoPJ - totalProv;
   const plLiq = pl - inss;
@@ -3026,6 +3026,8 @@ function parseWorkbook(wb, setGlobalCfg, setMonthlyCfgByYM, setRevenues, setExpe
     const gUpd = {};
     if (map['Alíquota Simples (%)']) gUpd.aliquota = map['Alíquota Simples (%)'];
     if (map['INSS sócio (%)']) gUpd.inssRate = map['INSS sócio (%)'];
+    if (map['Provisão 13º'] !== undefined) gUpd.prov13On = map['Provisão 13º'] === 'Sim';
+    if (map['Provisão Férias'] !== undefined) gUpd.provFerOn = map['Provisão Férias'] === 'Sim';
     if (Object.keys(gUpd).length) setGlobalCfg(p => ({
       ...p,
       ...gUpd
@@ -3176,7 +3178,9 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   const expKey = (y, m) => `${y}-${m}`;
   const [globalCfg, setGlobalCfg] = useState({
     aliquota: '9',
-    inssRate: '11'
+    inssRate: '11',
+    prov13On: true,
+    provFerOn: true
   });
   const mkMonthlyCfg = () => ({
     prolabore: '',
@@ -3195,7 +3199,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   }), [globalCfg, getMCfg, expYear, expMonth]);
   const setCfg = useCallback(updater => {
     const update = typeof updater === 'function' ? updater(cfg) : updater;
-    const gKeys = ['aliquota', 'inssRate'];
+    const gKeys = ['aliquota', 'inssRate', 'prov13On', 'provFerOn'];
     const gUpd = {},
       mUpd = {};
     Object.entries(update).forEach(([k, v]) => {
@@ -3362,7 +3366,9 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     if (p.monthlyCfgByYM) setMonthlyCfgByYM(p.monthlyCfgByYM);else if (p.cfg) {
       setGlobalCfg({
         aliquota: p.cfg.aliquota || '9',
-        inssRate: p.cfg.inssRate || '11'
+        inssRate: p.cfg.inssRate || '11',
+        prov13On: p.cfg.prov13On !== false,
+        provFerOn: p.cfg.provFerOn !== false
       });
     }
     if (p.revenues) setRevenues(p.revenues);
@@ -3812,6 +3818,38 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     value: globalCfg[key],
     onChange: e => setCfgV(key)(e.target.value)
   })))), /*#__PURE__*/React.createElement("div", {
+    style: { marginBottom: 14 }
+  }, [
+    ['prov13On',  '🎄 Guardar provisão 13º salário', `${globalCfg.prov13On !== false ? '≈ ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((n(cfg.fat||0)||0)/12) + '/mês' : 'Desativado'}`],
+    ['provFerOn', '🏖 Guardar provisão de férias (+1/3)', `${globalCfg.provFerOn !== false ? '≈ ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((n(cfg.fat||0)||0)*(4/3)/12) + '/mês' : 'Desativado'}`],
+  ].map(([key, lbl, hint]) => /*#__PURE__*/React.createElement("div", {
+    key: key,
+    style: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }
+  }, /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("div", { style:{ fontSize:12, fontWeight:600, color:'var(--txt)' } }, lbl),
+    /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, color:'var(--muted)', marginTop:2 } }, hint)
+  ), /*#__PURE__*/React.createElement("label", { style:{ position:'relative', display:'inline-block', width:36, height:20, flexShrink:0 } },
+    /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: globalCfg[key] !== false,
+      onChange: e => setCfgV(key)(e.target.checked),
+      style: { opacity:0, width:0, height:0 }
+    }),
+    /*#__PURE__*/React.createElement("span", {
+      style: {
+        position:'absolute', inset:0,
+        background: globalCfg[key] !== false ? 'var(--acc)' : 'var(--border)',
+        borderRadius:20, transition:'.3s', cursor:'pointer'
+      }
+    }),
+    /*#__PURE__*/React.createElement("span", {
+      style: {
+        position:'absolute', width:14, height:14, left: globalCfg[key] !== false ? 19 : 3, bottom:3,
+        background:'#fff', borderRadius:'50%', transition:'.3s'
+      }
+    })
+  ))
+  )), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',

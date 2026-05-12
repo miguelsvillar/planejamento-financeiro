@@ -837,6 +837,204 @@ function AlertBanners({
 }
 
 // ── Monthly tab ───────────────────────────────────────────────────────────
+// ── TabHome: tela inicial com saúde financeira + insights ─────────────────
+function TabHome({ c, cltEnabled, cltLiquido, expMonth, expYear, getExp, getInv, globalCfg, getMCfg, otherIncome, monthlyFat, setTab }) {
+  const liquidoFinal = c.resFinal + (cltEnabled ? cltLiquido : 0);
+  const rendaDisp = Math.max(c.rendaDisp, 1);
+
+  // Previous 2 months for trend
+  const pm1 = expMonth === 0 ? 11 : expMonth - 1; const py1 = expMonth === 0 ? expYear - 1 : expYear;
+  const pm2 = pm1 === 0 ? 11 : pm1 - 1;           const py2 = pm1 === 0 ? py1 - 1 : py1;
+  const exp0 = getExp(expYear, expMonth);
+  const exp1 = getExp(py1, pm1);
+  const tot0 = exp0.reduce((s, e) => s + n(e.value), 0);
+  const tot1 = exp1.reduce((s, e) => s + n(e.value), 0);
+  const tot2 = getExp(py2, pm2).reduce((s, e) => s + n(e.value), 0);
+
+  // ─── Score components ──────────────────────────────────────────────────
+  const savingsPct = liquidoFinal / rendaDisp;
+  const expRatio   = tot0 / rendaDisp;
+  const invRatio   = c.totalInv / rendaDisp;
+
+  const s1 = Math.max(0, Math.min(25, Math.round(Math.max(savingsPct, 0) * 50)));
+  const s2 = expRatio <= 0.4 ? 20 : expRatio <= 0.6 ? 14 : expRatio <= 0.8 ? 8 : expRatio < 1 ? 3 : 0;
+  const s3 = invRatio >= 0.2 ? 20 : invRatio >= 0.1 ? 14 : invRatio >= 0.05 ? 7 : invRatio > 0 ? 3 : 0;
+  const trendBad = tot1 > 0 && tot0 > tot1 * 1.15;
+  const trendOk  = tot1 > 0 && tot0 <= tot1 && (tot2 === 0 || tot1 <= tot2 * 1.05);
+  const s4 = c.fat > 0 ? (trendBad ? 4 : trendOk ? 20 : 12) : 10;
+  const s5 = (c.fat > 0 || (cltEnabled && cltLiquido > 0)) ? 15 : 0;
+  const score = s1 + s2 + s3 + s4 + s5;
+
+  const scoreLabel  = score >= 80 ? 'Excelente' : score >= 60 ? 'Bom' : score >= 40 ? 'Regular' : 'Atenção';
+  const scoreColor  = score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : score >= 40 ? '#f59e0b' : '#f87171';
+  const scoreBg     = score >= 80 ? 'rgba(16,185,129,.08)'  : score >= 60 ? 'rgba(59,130,246,.08)'  : score >= 40 ? 'rgba(245,158,11,.08)'  : 'rgba(248,113,113,.08)';
+  const scoreBorder = score >= 80 ? 'rgba(16,185,129,.28)'  : score >= 60 ? 'rgba(59,130,246,.28)'  : score >= 40 ? 'rgba(245,158,11,.28)'  : 'rgba(248,113,113,.28)';
+
+  // SVG gauge: circle r=52, cx=cy=64
+  const r = 52, cxg = 64, cyg = 64;
+  const circ = 2 * Math.PI * r;
+  const dashOff = circ * (1 - score / 100);
+
+  // ─── Insights ─────────────────────────────────────────────────────────
+  const insights = [];
+  const noData = c.fat === 0 && !(cltEnabled && cltLiquido > 0);
+
+  if (noData) {
+    insights.push({ icon:'💡', text:'Sem faturamento registrado. Vá para "Mensal" para começar.', type:'info', action:'mensal' });
+  } else if (liquidoFinal < 0) {
+    insights.push({ icon:'🔴', text:`Mês fechando negativo em ${R(Math.abs(liquidoFinal))}. Revise seus gastos.`, type:'danger' });
+  } else if (savingsPct >= 0.3) {
+    insights.push({ icon:'🟢', text:`Você está guardando ${Math.round(savingsPct * 100)}% da renda disponível. Ótimo!`, type:'good' });
+  }
+
+  if (tot1 > 0 && tot0 > 0) {
+    const pct = Math.round(((tot0 - tot1) / tot1) * 100);
+    if (pct > 20) insights.push({ icon:'⚠️', text:`Suas despesas subiram ${pct}% vs ${MONTHS[pm1]}. Verifique o que mudou.`, type:'warn' });
+    else if (pct < -15) insights.push({ icon:'✅', text:`Você reduziu despesas em ${Math.abs(pct)}% vs ${MONTHS[pm1]}. Continue!`, type:'good' });
+  }
+
+  const topExp = [...exp0].filter(e => n(e.value) > 0).sort((a, b) => n(b.value) - n(a.value))[0];
+  if (topExp && tot0 > 0) {
+    const pct = Math.round(n(topExp.value) / tot0 * 100);
+    if (pct > 30) insights.push({ icon:'📊', text:`"${topExp.label}" representa ${pct}% das suas despesas (${R(n(topExp.value))}).`, type:'info' });
+  }
+
+  if (!noData) {
+    if (c.totalInv === 0) {
+      insights.push({ icon:'💡', text:'Nenhum investimento registrado. Considere separar ao menos 10% da renda.', type:'warn', action:'metas' });
+    } else if (invRatio < 0.05) {
+      insights.push({ icon:'📈', text:`Você está investindo ${Math.round(invRatio * 100)}% da renda. O ideal é 10–20%.`, type:'info', action:'metas' });
+    }
+  }
+
+  const subs0 = exp0.find(e => e.label === 'Assinaturas / Software');
+  const subs1 = exp1.find(e => e.label === 'Assinaturas / Software');
+  if (subs0 && subs1 && n(subs0.value) > 0 && n(subs1.value) > 0) {
+    const pct = Math.round(((n(subs0.value) - n(subs1.value)) / n(subs1.value)) * 100);
+    if (pct > 15) insights.push({ icon:'📱', text:`Seu gasto com assinaturas aumentou ${pct}% vs ${MONTHS[pm1]} (${R(n(subs0.value))}).`, type:'warn' });
+  }
+
+  if (liquidoFinal < 0 && tot1 > 0) {
+    const inv1 = getInv(py1, pm1);
+    const c1 = computeMonth({ ...globalCfg, ...getMCfg(py1, pm1) }, n(monthlyFat[pm1]), exp1, inv1, otherIncome, 0);
+    if (c1.resFinal < 0) insights.push({ icon:'🔴', text:'Segundo mês consecutivo no negativo. É hora de agir.', type:'danger' });
+  }
+
+  const shown = insights.slice(0, 5);
+  const iBg  = t => t==='danger'?'rgba(248,113,113,.07)':t==='warn'?'rgba(245,158,11,.06)':t==='good'?'rgba(16,185,129,.07)':'rgba(59,130,246,.06)';
+  const iBd  = t => t==='danger'?'rgba(248,113,113,.28)':t==='warn'?'rgba(245,158,11,.28)':t==='good'?'rgba(16,185,129,.28)':'rgba(59,130,246,.28)';
+  const iClr = t => t==='danger'?'var(--red)':t==='warn'?'var(--gold)':t==='good'?'var(--green)':'var(--pj)';
+
+  const indicators = [
+    { label:'Sobra mensal',      s:s1, max:25, desc: savingsPct >= 0 ? `${Math.round(Math.max(savingsPct,0)*100)}% da renda` : 'Negativo' },
+    { label:'Controle de gastos',s:s2, max:20, desc: tot0>0 ? `${Math.round(expRatio*100)}% da renda` : 'Sem dados' },
+    { label:'Investimentos',     s:s3, max:20, desc: c.totalInv>0 ? `${R(c.totalInv)} (${Math.round(invRatio*100)}%)` : 'Não investindo' },
+    { label:'Tendência',         s:s4, max:20, desc: trendBad?'Gastos subindo':trendOk?'Estável ou melhora':'Dados insuficientes' },
+    { label:'Receita presente',  s:s5, max:15, desc: c.fat>0?R(c.fat):(cltEnabled&&cltLiquido>0?R(cltLiquido):'Sem receita') },
+  ];
+  const barColor = ratio => ratio >= 0.7 ? 'var(--green)' : ratio >= 0.4 ? 'var(--gold)' : 'var(--red)';
+
+  return React.createElement('div', null,
+
+    // ── Hero ──────────────────────────────────────────────────────────────
+    React.createElement('div', { style:{textAlign:'center',padding:'24px 16px 16px'} },
+      React.createElement('div', { style:{fontSize:11,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--muted)',marginBottom:8} },
+        `${MONTHS_FULL[expMonth]} ${expYear}`),
+      React.createElement('h2', { style:{fontSize:24,fontWeight:900,letterSpacing:'-.03em',lineHeight:1.2,marginBottom:6,color:'var(--txt)'} },
+        'Pare de perder dinheiro', React.createElement('br',null), 'sem perceber.'),
+      React.createElement('p', { style:{fontSize:13,color:'var(--muted)',fontWeight:500} },
+        'Seu dinheiro explicado de forma simples.')
+    ),
+
+    // ── Score card ────────────────────────────────────────────────────────
+    React.createElement('div', { className:'card', style:{background:scoreBg,border:`1px solid ${scoreBorder}`,marginBottom:14} },
+      React.createElement('div', { style:{display:'flex',alignItems:'center',gap:20,flexWrap:'wrap'} },
+        // Gauge SVG
+        React.createElement('div', { style:{flexShrink:0,display:'flex',flexDirection:'column',alignItems:'center',gap:4} },
+          React.createElement('svg', { width:128, height:128, viewBox:'0 0 128 128' },
+            React.createElement('circle', { cx:cxg, cy:cyg, r, fill:'none', stroke:'var(--s3)', strokeWidth:10 }),
+            React.createElement('circle', {
+              cx:cxg, cy:cyg, r, fill:'none',
+              stroke:scoreColor, strokeWidth:10,
+              strokeDasharray:`${circ}`, strokeDashoffset:`${dashOff}`,
+              strokeLinecap:'round',
+              style:{ transform:'rotate(-90deg)', transformOrigin:'64px 64px', transition:'stroke-dashoffset .9s ease' }
+            }),
+            React.createElement('text', { x:64, y:61, textAnchor:'middle', fill:scoreColor, fontSize:32, fontWeight:'800', fontFamily:'system-ui,sans-serif', dominantBaseline:'middle' }, score),
+            React.createElement('text', { x:64, y:84, textAnchor:'middle', fill:'var(--muted)', fontSize:10, fontFamily:'system-ui,sans-serif' }, '/100')
+          ),
+          React.createElement('div', { style:{fontSize:14,fontWeight:800,color:scoreColor,letterSpacing:'-.01em',marginTop:-4} }, scoreLabel)
+        ),
+        // Indicator breakdown
+        React.createElement('div', { style:{flex:1,minWidth:200} },
+          React.createElement('div', { style:{fontSize:12,color:'var(--muted)',marginBottom:12,fontWeight:500} }, 'Saúde financeira — ', MONTHS_FULL[expMonth]),
+          indicators.map(({label,s,max,desc}) => {
+            const ratio = s / max;
+            return React.createElement('div', { key:label, style:{marginBottom:8} },
+              React.createElement('div', { style:{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3} },
+                React.createElement('span', { style:{color:'var(--muted)',fontWeight:600} }, label),
+                React.createElement('span', { style:{color:barColor(ratio),fontWeight:700} }, `${s}/${max}`)
+              ),
+              React.createElement('div', { style:{height:5,background:'var(--s3)',borderRadius:4,overflow:'hidden'} },
+                React.createElement('div', { style:{height:'100%',width:`${ratio*100}%`,background:barColor(ratio),borderRadius:4,transition:'width .7s ease'} })
+              ),
+              React.createElement('div', { style:{fontSize:10,color:'var(--muted)',marginTop:2} }, desc)
+            );
+          })
+        )
+      )
+    ),
+
+    // ── Quick numbers ─────────────────────────────────────────────────────
+    React.createElement('div', { style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginBottom:14} },
+      [
+        { label:'Faturamento', val: c.fat>0 ? R(c.fat) : (cltEnabled&&cltLiquido>0 ? R(cltLiquido) : '—'), color:'var(--pj)' },
+        { label:'Despesas',    val: tot0>0 ? R(tot0) : '—',                                                   color:'var(--red)' },
+        { label:'Investido',   val: c.totalInv>0 ? R(c.totalInv) : '—',                                      color:'var(--green)' },
+        { label:'Sobra',       val: (!noData||liquidoFinal!==0) ? R(liquidoFinal) : '—',                      color: liquidoFinal>=0?'var(--green)':'var(--red)' },
+      ].map(({label,val,color}) =>
+        React.createElement('div', { key:label, style:{background:'var(--s1)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 14px'} },
+          React.createElement('div', { style:{fontSize:10,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.07em',marginBottom:5} }, label),
+          React.createElement('div', { style:{fontSize:17,fontWeight:800,color,letterSpacing:'-.02em'} }, val)
+        )
+      )
+    ),
+
+    // ── Insights ──────────────────────────────────────────────────────────
+    shown.length > 0 && React.createElement('div', { style:{marginBottom:14} },
+      React.createElement('div', { style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'var(--muted)',marginBottom:10,display:'flex',alignItems:'center',gap:8} },
+        '💬 Insights',
+        React.createElement('span', { style:{height:1,flex:1,background:'var(--border)',display:'block'} })
+      ),
+      shown.map((ins, i) =>
+        React.createElement('div', {
+          key:i,
+          onClick: ins.action ? () => setTab(ins.action) : undefined,
+          style:{
+            background:iBg(ins.type), border:`1px solid ${iBd(ins.type)}`,
+            borderRadius:8, padding:'11px 14px', marginBottom:7,
+            display:'flex', alignItems:'flex-start', gap:10,
+            cursor: ins.action ? 'pointer' : 'default'
+          }
+        },
+          React.createElement('span', { style:{fontSize:16,flexShrink:0,lineHeight:1.4} }, ins.icon),
+          React.createElement('span', { style:{fontSize:13,color:iClr(ins.type),lineHeight:1.5,fontWeight:500} }, ins.text)
+        )
+      )
+    ),
+
+    // ── Nav ───────────────────────────────────────────────────────────────
+    React.createElement('div', { style:{display:'flex',gap:10,marginBottom:4} },
+      React.createElement('button', { onClick:()=>setTab('mensal'),
+        style:{flex:1,padding:'12px 0',background:'var(--pj)',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}
+      }, '📊 Ver detalhes do mês →'),
+      React.createElement('button', { onClick:()=>setTab('metas'),
+        style:{flex:1,padding:'12px 0',background:'var(--s2)',border:'1px solid var(--border)',color:'var(--muted)',borderRadius:8,fontWeight:600,fontSize:13,cursor:'pointer'}
+      }, '🎯 Ver metas →')
+    )
+  );
+}
+
 function TabMensal({
   cfg,
   revenues,
@@ -2971,7 +3169,7 @@ function parseWorkbook(wb, setGlobalCfg, setMonthlyCfgByYM, setRevenues, setExpe
 // ── App root ──────────────────────────────────────────────────────────────
 function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   const today = new Date();
-  const [tab, setTab] = useState('mensal');
+  const [tab, setTab] = useState('home');
 
   // month/year navigator — declared FIRST (critical ordering)
   const [expMonth, setExpMonth] = useState(today.getMonth());
@@ -3470,6 +3668,9 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   }, /*#__PURE__*/React.createElement("h1", null, "\uD83D\uDCBC Calculadora PJ + PF"), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, /*#__PURE__*/React.createElement("button", {
+    className: `tab ${tab === 'home' ? 'active' : ''}`,
+    onClick: () => setTab('home')
+  }, "\uD83C\uDFE0 In\xEDcio"), /*#__PURE__*/React.createElement("button", {
     className: `tab ${tab === 'mensal' ? 'active' : ''}`,
     onClick: () => setTab('mensal')
   }, "\uD83D\uDCCA Mensal"), /*#__PURE__*/React.createElement("button", {
@@ -3572,7 +3773,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     onChange: handleImport
   }))), /*#__PURE__*/React.createElement("div", {
     className: "main"
-  }, tab !== 'horas' && /*#__PURE__*/React.createElement("div", {
+  }, (tab !== 'horas' && tab !== 'home') && /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 16
@@ -3635,7 +3836,20 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     type: "number",
     value: getMCfg(expYear, expMonth)[key],
     onChange: e => setCfgV(key)(e.target.value)
-  }))))), tab === 'mensal' && /*#__PURE__*/React.createElement(TabMensal, {
+  }))))), tab === 'home' && /*#__PURE__*/React.createElement(TabHome, {
+    c: c,
+    cltEnabled: cltEnabled,
+    cltLiquido: cltLiquido,
+    expMonth: expMonth,
+    expYear: expYear,
+    getExp: getExp,
+    getInv: getInv,
+    globalCfg: globalCfg,
+    getMCfg: getMCfg,
+    otherIncome: otherIncome,
+    monthlyFat: monthlyFat,
+    setTab: setTab
+  }), tab === 'mensal' && /*#__PURE__*/React.createElement(TabMensal, {
     cfg: cfg,
     revenues: revenues,
     setRevenues: setRevenues,

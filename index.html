@@ -3664,7 +3664,13 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   };
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "top-bar"
-  }, /*#__PURE__*/React.createElement("h1", null, "Sovra Flow"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {style:{display:'flex',alignItems:'center',gap:8}},
+    React.createElement('div', null,
+      React.createElement('div', {style:{fontSize:16,fontWeight:900,letterSpacing:'-.04em',lineHeight:1,color:'var(--txt)'}}, 'Sovra'),
+      React.createElement('div', {style:{fontSize:9,color:'var(--muted)',letterSpacing:'.04em'}}, 'by Sovra Labs')
+    ),
+    React.createElement('span', {style:{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#000',borderRadius:4,padding:'2px 8px',fontSize:10,fontWeight:800,letterSpacing:'.05em'}}, 'FLOW')
+  ), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, /*#__PURE__*/React.createElement("button", {
     className: `tab ${tab === 'home' ? 'active' : ''}`,

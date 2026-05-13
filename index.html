@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>💼 Calculadora PJ + PF v2</title>
+<title>Sovra Flow — Planejador PJ + CLT</title>
 
 
 
@@ -588,8 +588,8 @@ function compute(cfg, revenues, expenses, investments, otherIncome, horasBruto =
   const lucroPJ = fat - simples - pl - cont;
   const dist = lucroPJ > 0 ? lucroPJ * distR : 0;
   const saldoPJ = lucroPJ - dist;
-  const prov13 = cfg.prov13On !== false ? fat / 12 : 0;
-  const provFer = cfg.provFerOn !== false ? fat * (4 / 3) / 12 : 0;
+  const prov13 = fat / 12;
+  const provFer = fat * (4 / 3) / 12;
   const totalProv = prov13 + provFer;
   const saldoDisp = saldoPJ - totalProv;
   const plLiq = pl - inss;
@@ -3026,8 +3026,6 @@ function parseWorkbook(wb, setGlobalCfg, setMonthlyCfgByYM, setRevenues, setExpe
     const gUpd = {};
     if (map['Alíquota Simples (%)']) gUpd.aliquota = map['Alíquota Simples (%)'];
     if (map['INSS sócio (%)']) gUpd.inssRate = map['INSS sócio (%)'];
-    if (map['Provisão 13º'] !== undefined) gUpd.prov13On = map['Provisão 13º'] === 'Sim';
-    if (map['Provisão Férias'] !== undefined) gUpd.provFerOn = map['Provisão Férias'] === 'Sim';
     if (Object.keys(gUpd).length) setGlobalCfg(p => ({
       ...p,
       ...gUpd
@@ -3178,9 +3176,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   const expKey = (y, m) => `${y}-${m}`;
   const [globalCfg, setGlobalCfg] = useState({
     aliquota: '9',
-    inssRate: '11',
-    prov13On: true,
-    provFerOn: true
+    inssRate: '11'
   });
   const mkMonthlyCfg = () => ({
     prolabore: '',
@@ -3199,7 +3195,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   }), [globalCfg, getMCfg, expYear, expMonth]);
   const setCfg = useCallback(updater => {
     const update = typeof updater === 'function' ? updater(cfg) : updater;
-    const gKeys = ['aliquota', 'inssRate', 'prov13On', 'provFerOn'];
+    const gKeys = ['aliquota', 'inssRate'];
     const gUpd = {},
       mUpd = {};
     Object.entries(update).forEach(([k, v]) => {
@@ -3366,9 +3362,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     if (p.monthlyCfgByYM) setMonthlyCfgByYM(p.monthlyCfgByYM);else if (p.cfg) {
       setGlobalCfg({
         aliquota: p.cfg.aliquota || '9',
-        inssRate: p.cfg.inssRate || '11',
-        prov13On: p.cfg.prov13On !== false,
-        provFerOn: p.cfg.provFerOn !== false
+        inssRate: p.cfg.inssRate || '11'
       });
     }
     if (p.revenues) setRevenues(p.revenues);
@@ -3670,7 +3664,7 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
   };
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "top-bar"
-  }, /*#__PURE__*/React.createElement("h1", null, "\uD83D\uDCBC Calculadora PJ + PF"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h1", null, "Sovra Flow"), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, /*#__PURE__*/React.createElement("button", {
     className: `tab ${tab === 'home' ? 'active' : ''}`,
@@ -3818,38 +3812,6 @@ function App({ uid=null, userEmail=null, initialData=null, onLogout=null }) {
     value: globalCfg[key],
     onChange: e => setCfgV(key)(e.target.value)
   })))), /*#__PURE__*/React.createElement("div", {
-    style: { marginBottom: 14 }
-  }, [
-    ['prov13On',  '🎄 Guardar provisão 13º salário', `${globalCfg.prov13On !== false ? '≈ ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((n(cfg.fat||0)||0)/12) + '/mês' : 'Desativado'}`],
-    ['provFerOn', '🏖 Guardar provisão de férias (+1/3)', `${globalCfg.provFerOn !== false ? '≈ ' + new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((n(cfg.fat||0)||0)*(4/3)/12) + '/mês' : 'Desativado'}`],
-  ].map(([key, lbl, hint]) => /*#__PURE__*/React.createElement("div", {
-    key: key,
-    style: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--border)' }
-  }, /*#__PURE__*/React.createElement("div", null,
-    /*#__PURE__*/React.createElement("div", { style:{ fontSize:12, fontWeight:600, color:'var(--txt)' } }, lbl),
-    /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, color:'var(--muted)', marginTop:2 } }, hint)
-  ), /*#__PURE__*/React.createElement("label", { style:{ position:'relative', display:'inline-block', width:36, height:20, flexShrink:0 } },
-    /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: globalCfg[key] !== false,
-      onChange: e => setCfgV(key)(e.target.checked),
-      style: { opacity:0, width:0, height:0 }
-    }),
-    /*#__PURE__*/React.createElement("span", {
-      style: {
-        position:'absolute', inset:0,
-        background: globalCfg[key] !== false ? 'var(--acc)' : 'var(--border)',
-        borderRadius:20, transition:'.3s', cursor:'pointer'
-      }
-    }),
-    /*#__PURE__*/React.createElement("span", {
-      style: {
-        position:'absolute', width:14, height:14, left: globalCfg[key] !== false ? 19 : 3, bottom:3,
-        background:'#fff', borderRadius:'50%', transition:'.3s'
-      }
-    })
-  ))
-  )), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -4315,7 +4277,7 @@ function AuthScreen() {
     React.createElement('div', {style:{background:'var(--s1)',border:'1px solid var(--border)',borderRadius:16,padding:'32px 28px',width:'100%',maxWidth:400,boxShadow:'0 8px 32px rgba(0,0,0,.4)'}},
       React.createElement('div', {style:{textAlign:'center',marginBottom:28}},
         React.createElement('div', {style:{fontSize:44,marginBottom:8}}, '💼'),
-        React.createElement('h1', {style:{margin:0,fontSize:22,color:'var(--txt)',fontWeight:800,letterSpacing:'-.02em'}}, 'Calculadora PJ/PF'),
+        React.createElement('h1', {style:{margin:0,fontSize:22,color:'var(--txt)',fontWeight:800,letterSpacing:'-.02em'}}, 'Sovra Flow'),
         React.createElement('p', {style:{margin:'6px 0 0',color:'var(--muted)',fontSize:13}}, 'Planejamento financeiro para freelancers')
       ),
       React.createElement('div', {style:{display:'flex',background:'var(--bg)',borderRadius:10,padding:4,marginBottom:24,gap:4}},
